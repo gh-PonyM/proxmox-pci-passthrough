@@ -1,0 +1,103 @@
+---
+
+- name: Remove old ollama install
+  file:
+    path: /usr/lib/ollama
+    state: absent
+  become: true
+  when: ollama_update
+
+- name: Check /usr/lib/ollama
+  stat:
+    path: /usr/lib/ollama
+  register: oll_install
+
+- name: Install base Ollama package
+  block:
+    - name: Download ollama base package
+      ansible.builtin.get_url:
+        url: https://ollama.com/download/ollama-linux-amd64.tgz
+        dest: /tmp/ollama-linux-amd64.tgz
+        mode: '0644'
+    # creates /usr/lib/ollama and /usr/bin/ollama
+    - name: Extract base Ollama package into /usr
+      ansible.builtin.unarchive:
+        src: /tmp/ollama-linux-amd64.tgz
+        dest: /usr
+        remote_src: true
+  when: not oll_install.stat.exists
+  become: true
+
+- name: Create ollama system user and group
+  ansible.builtin.user:
+    name: ollama
+    system: true
+    shell: /bin/false
+    create_home: true
+    home: /usr/share/ollama
+  become: true
+
+- name: Add current Ansible user '{{ u }}' to ollama group
+  ansible.builtin.user:
+    name: "{{ u }}"
+    groups: ollama
+    append: true
+  vars:
+    u: "{{ ansible_user | default(ansible_env.SUDO_USER) }}"
+  become: true
+
+- name: Create systemd service file
+  template:
+    dest: /etc/systemd/system/ollama.service
+    src: templates/ollama.service
+  become: true
+  notify: reload systemd
+  register: env_set
+
+- meta: flush_handlers
+
+- name: Ensure ollama service is {{ state }}
+  service:
+    name: ollama.service
+    state: "{{ state }}"
+    enabled: "{{ true }}"
+  become: true
+  vars:
+    state: "{{ env_set.changed | ternary('restarted', 'started') }}"
+
+- import_tasks: amd_rocm.yml
+  when: ollama_use_amd_gpu
+  tags: rocm
+
+- name: Check ollama rocm directory
+  stat:
+    path: /usr/lib/ollama/rocm
+  register: ollama_rocm
+  when: ollama_use_amd_gpu
+
+- name: Install rocm ollama files
+  block:
+    - name: Download ROCm tgz package
+      ansible.builtin.get_url:
+        url: https://ollama.com/download/ollama-linux-amd64-rocm.tgz
+        dest: /tmp/ollama-linux-amd64-rocm.tgz
+        mode: '0644'
+    # copies /usr/lib/ollama/rocm
+    - name: Extract ROCm tgz package into /usr
+      ansible.builtin.unarchive:
+        src: /tmp/ollama-linux-amd64-rocm.tgz
+        dest: /usr
+        remote_src: true
+  when:
+   - ollama_use_amd_gpu
+   - not ollama_rocm.stat.exists
+  become: true
+
+- name: Download ollama models
+  command: "ollama pull {{ item }}"
+  when: ollama_models
+  loop: ollama_models
+#Sep 02 09:27:24 pop-os ollama[335287]: time=2025-09-02T09:27:24.708+02:00 level=DEBUG source=amd_common.go:16 msg="evaluating potential rocm lib dir /usr/local/lib/ollama/rocm"
+#Sep 02 09:27:24 pop-os ollama[335287]: time=2025-09-02T09:27:24.708+02:00 level=DEBUG source=amd_common.go:16 msg="evaluating potential rocm lib dir /opt/rocm/lib"
+#Sep 02 09:27:24 pop-os ollama[335287]: time=2025-09-02T09:27:24.708+02:00 level=DEBUG source=amd_common.go:16 msg="evaluating potential rocm lib dir /usr/lib64"
+#Sep 02 09:27:24 pop-os ollama[335287]: time=2025-09-02T09:27:24.708+02:00 level=DEBUG source=amd_common.go:16 msg="evaluating potential rocm lib dir /usr/share/ollama/lib/rocm"

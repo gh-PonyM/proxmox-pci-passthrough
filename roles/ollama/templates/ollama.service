@@ -1,0 +1,18 @@
+[Unit]
+Description=Ollama Service
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ollama serve
+User=ollama
+Group=ollama
+Restart=always
+RestartSec=3
+Environment="PATH=$PATH {% if ollama_use_amd_gpu %}:/opt/rocm/bin{% endif %}"
+Environment="OLLAMA_HOST={{ ollama_host }}"
+Environment="OLLAMA_ORIGINS={{ ollama_allowed_origins }}"
+{% for key,val in ollama_service_env.items() %}
+Environment="{{ key }}={{ val }}"
+{% endfor %}
+[Install]
+WantedBy=default.target

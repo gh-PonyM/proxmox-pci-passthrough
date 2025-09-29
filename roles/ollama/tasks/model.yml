@@ -1,0 +1,32 @@
+---
+
+- name: Render models
+  template:
+    src: Modelfile.j2
+    dest: "{{ ollama_model_file_dir.rstrip('/') }}/{{ model.id }}"
+    owner: "{{ ollama_user }}"
+    group: "{{ ollama_user }}"
+  register: render
+  when: model.state | default('present') != 'absent'
+
+- name: Delete model file
+  file:
+    path: "{{ ollama_model_file_dir.rstrip('/') }}/{{ model.id }}"
+    state: absent
+  when: model.state | default('present') == 'absent'
+
+- name: Create/Update model {{ model.id }}
+  command: "ollama create {{ model.id }} -f {{ ollama_model_file_dir.rstrip('/') }}/{{ model.id }}"
+  when:
+   - model.state | default('present') != 'absent'
+   - render.changed
+
+- name: Delete model {{ model.id }}
+  command: "ollama rm {{ model.id }}"
+  when:
+   - model.state | default('present') == 'absent'
+  register: ollama_del
+  failed_when:
+    - ollama_del.rc not in (0, 1)
+  changed_when:
+    - "'not found' not in ollama_del.stderr"

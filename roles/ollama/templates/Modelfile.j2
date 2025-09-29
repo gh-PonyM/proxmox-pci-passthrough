@@ -1,0 +1,32 @@
+# DOC: https://github.com/ollama/ollama/blob/main/docs/modelfile.md
+
+FROM {{ model.base }}
+
+{% if model.template | default(False) %}
+TEMPLATE {{ model.template }}
+{% endif %}
+
+
+{% if model.parameters | default(False) %}
+{% for key, value in model.parameters.items() %}
+{% if value is string %}
+PARAMETER {{ key }} {{ value }}
+{% else %}
+{% for it in value %}
+PARAMETER {{ key }} {{ it }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{%- if model.system | default(False) %}
+SYSTEM """
+{{ model.system }}
+"""
+{%- endif %}
+
+{%- if model.messages  | default(False) %}
+{% for msg in model.messages %}
+{{ msg }}
+{% endfor %}
+{%- endif %}

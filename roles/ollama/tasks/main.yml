@@ -1,0 +1,21 @@
+---
+
+- import_tasks: install.yml
+  when: not ollama_remove
+
+- import_tasks: remove.yml
+  when: ollama_remove
+
+- name: Ensure the model files directory
+  file:
+    path: "{{ ollama_model_file_dir }}"
+    state: directory
+    owner: "{{ ollama_user }}"
+    group: "{{ ollama_user }}"
+  when: not ollama_remove
+
+- include_tasks: model.yml
+  loop: "{{ custom_models }}"
+  loop_control:
+    loop_var: model
+  when: not ollama_remove

@@ -1,0 +1,63 @@
+---
+
+- name: Delete models files directory
+  file:
+    path: "{{ ollama_model_file_dir }}"
+    state: absent
+  when: ollama_purge_models_dir
+
+- name: Check ollama service files
+  stat:
+    path: /etc/systemd/system/ollama.service
+  become: true
+  register: svc
+
+- name: Disable ollama service
+  service:
+    name: ollama
+    state: stopped
+    enabled: false
+  when: svc.stat.exists
+
+- name: Remove ollama systemd service file
+  file:
+    path: /etc/systemd/system/ollama.service
+    state: absent
+  become: true
+  register: oll_svc
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: oll_svc.changed
+
+- name: Remove ollama bin and lib
+  file:
+    path: "{{ item }}"
+    state: absent
+  become: true
+  loop:
+    - /usr/local/bin/ollama
+    - /usr/lib/ollama
+
+- name: Delete models directory
+  file:
+    path: /usr/share/ollama
+    state: absent
+  become: true
+  when: not ollama_keep_models
+
+- import_tasks: remove_amd_rocm.yml
+  when: ollama_use_amd_gpu
+
+- name: Remove ollama user
+  become: true
+  user:
+    name: ollama
+    state: absent
+
+- name: Remove ollama group
+  become: true
+  group:
+    name: ollama
+    state: absent

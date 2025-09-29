@@ -1,0 +1,29 @@
+---
+
+custom_models: []
+ollama_model_file_dir: ~/.ollama_model_files
+ollama_user: "{{ ansible_user }}"
+
+# a list of ollama models to download
+ollama_models: []
+
+# Remove ollama service file and binaries
+ollama_remove: false
+
+# Purge all models from directory is ollama_remove is set to true
+ollama_purge_models_dir: false
+
+# Directory where models are stored
+ollama_host: 127.0.0.1:11434
+ollama_allowed_origins: "http://{{ ollama_host }}"
+
+# dict of env variables to add to the service
+ollama_service_env: {}
+
+ollama_use_amd_gpu: false
+ollama_keep_models: false
+
+amd_rocm_version: 6.4.3
+amd_rocm_user: "{{ ansible_user }}"
+
+ollama_update: false

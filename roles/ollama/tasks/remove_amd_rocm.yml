@@ -1,0 +1,16 @@
+- name: Remove amd rocm
+  apt:
+    name:
+      - rocm
+      - rocm-core
+    state: absent
+    autoremove: true
+    clean: true
+  become: true
+
+- name: Remove apt sources file
+  file:
+    path: "{{ item }}"
+  loop:
+    - /etc/apt/sources.list.d/rocm.list
+    - /etc/apt/preferences.d/rocm-pin-600

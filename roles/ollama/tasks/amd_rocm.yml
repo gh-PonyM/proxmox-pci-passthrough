@@ -1,0 +1,123 @@
+#- set_fact:
+#    amdgpu_pkg_version: "6.4.60403-1"
+#    amdgpu_repo_base: "https://repo.radeon.com/amdgpu-install"
+#
+#- name: Download AMDGPU installer deb
+#  get_url:
+#    url: "{{ amdgpu_repo_base }}/{{ amdgpu_version }}/ubuntu/{{ ansible_distribution_release }}/amdgpu-install_{{ amdgpu_pkg_version }}_all.deb"
+#    dest: "/tmp/amdgpu-install_{{ amdgpu_pkg_version }}.deb"
+#    mode: '0644'
+
+- set_fact:
+    rocm_key_url: "https://repo.radeon.com/rocm/rocm.gpg.key"
+    rocm_keyring_path: "/etc/apt/keyrings/rocm.gpg"
+
+#- name: Ensure keyring directory exists
+#  file:
+#    path: /etc/apt/keyrings
+#    state: directory
+#    mode: '0755'
+
+- name: Download ROCm GPG key
+  get_url:
+    url: "{{ rocm_key_url }}"
+    dest: /tmp/rocm.gpg.key
+    mode: '0644'
+
+- name: Ensure GPG is installed
+  apt:
+    name: gnupg
+    state: present
+  become: true
+
+- name: Convert ROCm key to keyring format
+  command: >
+    gpg --dearmor -o {{ rocm_keyring_path }} /tmp/rocm.gpg.key
+  args:
+    creates: "{{ rocm_keyring_path }}"
+  become: true
+
+- name: Add ROCm apt repository
+  copy:
+    dest: /etc/apt/sources.list.d/rocm.list
+    content: |
+      deb [arch=amd64 signed-by={{ rocm_keyring_path }}] https://repo.radeon.com/rocm/apt/{{ amd_rocm_version }} {{ ansible_distribution_release }} main
+    mode: '0644'
+  become: true
+
+- name: Pin ROCm repo with priority 600
+  copy:
+    dest: /etc/apt/preferences.d/rocm-pin-600
+    content: |
+      Package: *
+      Pin: release o=repo.radeon.com
+      Pin-Priority: 600
+    mode: '0644'
+  become: true
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  become: true
+
+- name: Add amd rocm user to render,video group
+  ansible.builtin.user:
+    name: "{{ amd_rocm_user }}"
+    groups: render,video
+    append: true
+  become: true
+
+- name: Add ollama user render,video group
+  ansible.builtin.user:
+    name: ollama
+    groups: render,video
+    append: true
+  become: true
+
+# creates /opt/rocm-<version>, but no softlink is created to /opt/rocm
+# unlike stated here https://github.com/ROCm/ROCm/issues/1568, the softlink is not created by rocm-dev package
+- name: Install rocm library
+  apt:
+    name: rocm
+    state: present
+  become: true
+
+- name: Find installed ROCm directories
+  find:
+    paths: /opt
+    patterns: "rocm-*"
+    file_type: directory
+  register: rocm_dirs
+  become: true
+
+- name: Set fact for latest ROCm directory
+  set_fact:
+    rocm_latest: "{{ rocm_dirs.files | map(attribute='path') | sort | last }}"
+
+- name: Ensure /opt/rocm symlink points to latest version
+  file:
+    src: "{{ rocm_latest }}"
+    dest: /opt/rocm
+    state: link
+    force: yes
+  become: true
+
+- name: Ensure ROCm library paths are in ld.so config
+  copy:
+    dest: /etc/ld.so.conf.d/rocm.conf
+    content: |
+      /opt/rocm/lib
+      /opt/rocm/lib64
+    mode: '0644'
+  become: true
+  register: amd_ld_config
+
+- name: Refresh dynamic linker run-time bindings
+  command: ldconfig
+  become: true
+  when: amd_ld_config.changed
+
+- name: check installation of rocminfo
+  command:
+    cmd: /opt/rocm/bin/rocminfo
+  changed_when: false
